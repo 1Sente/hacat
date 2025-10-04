@@ -1,0 +1,31 @@
+FROM node:18-slim
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    python3 \
+    make \
+    g++ \
+    openssl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy all files
+COPY . .
+
+# Install dependencies
+RUN npm install
+
+# Set Prisma binary target and generate client
+ENV PRISMA_CLI_BINARY_TARGETS=debian-openssl-3.0.x
+RUN npx prisma generate
+
+# Build
+RUN npm run build
+
+EXPOSE 8000
+
+CMD ["npm", "start"]
+

@@ -1,0 +1,57 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "debian-openssl-1.1.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  email     String?  @unique
+  role      String   @default("user") // 'user' | 'approver' | 'admin'
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  requests  Request[] @relation("RequesterRequests")
+  approvedRequests Request[] @relation("ApprovedRequests")
+  auditLogs AuditLog[]
+
+  @@map("users")
+}
+
+model Request {
+  id          Int      @id @default(autoincrement())
+  resource    String
+  reason      String
+  status      String   @default("pending") // 'pending' | 'approved' | 'rejected'
+  secretName  String?  @unique
+  requester   User?    @relation("RequesterRequests", fields: [requesterId], references: [id])
+  requesterId Int?
+  approver    User?    @relation("ApprovedRequests", fields: [approverId], references: [id])
+  approverId  Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  auditLogs   AuditLog[]
+
+  @@map("requests")
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  action    String
+  actor     String
+  details   String?
+  actorUser User?    @relation(fields: [actorUserId], references: [id])
+  actorUserId Int?
+  request   Request? @relation(fields: [requestId], references: [id])
+  requestId Int?
+  timestamp DateTime @default(now())
+
+  @@map("audit_logs")
+}
