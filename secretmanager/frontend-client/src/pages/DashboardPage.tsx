@@ -17,8 +17,10 @@ export default function DashboardPage() {
   const { requests, isLoading, fetchRequests } = useRequestStore()
 
   useEffect(() => {
-    fetchRequests()
-  }, [fetchRequests])
+    if (user) {
+      fetchRequests()
+    }
+  }, [user, fetchRequests])
 
   const stats = {
     total: requests.length,

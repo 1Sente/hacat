@@ -12,18 +12,38 @@ export const apiClient = axios.create({
   },
 })
 
+// Helper to set/remove Authorization header globally
+export function setAuthToken(token?: string | null) {
+  if (token) {
+    apiClient.defaults.headers.Authorization = `Bearer ${token}`
+  } else {
+    delete (apiClient.defaults.headers as any).Authorization
+  }
+}
+
 // Request interceptor to add auth token
 apiClient.interceptors.request.use(
-  (config) => {
-    const { token } = useAuthStore.getState()
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
+  async (config) => {
+    const { token, refreshToken, keycloak } = useAuthStore.getState()
+    let bearer = token
+    try {
+      if (!bearer && keycloak) {
+        await keycloak.updateToken(0)
+        bearer = keycloak.token || null
+        if (!bearer) {
+          await refreshToken()
+          bearer = useAuthStore.getState().token
+        }
+      }
+    } catch (_) {
+      // ignore; перехватим 401 в response interceptor
+    }
+    if (bearer) {
+      config.headers.Authorization = `Bearer ${bearer}`
     }
     return config
   },
-  (error) => {
-    return Promise.reject(error)
-  }
+  (error) => Promise.reject(error)
 )
 
 // Response interceptor for error handling

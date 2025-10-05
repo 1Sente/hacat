@@ -44,6 +44,8 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/secretmanager
       KC_DB_USERNAME: postgres
       KC_DB_PASSWORD: postgres
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_STRICT: 'false'
     ports:
       - "8080:8080"
     command: start-dev

@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import Keycloak from 'keycloak-js'
 import toast from 'react-hot-toast'
 import { KeycloakUserInfo, KeycloakTokenParsed } from '../types/keycloak'
+import { setAuthToken } from '../services/api'
 
 interface User {
   id: string
@@ -44,6 +45,7 @@ const keycloakConfig = {
 }
 
 const keycloak = new Keycloak(keycloakConfig)
+;(window as any).kc = keycloak
 
 export const useAuthStore = create<AuthStore>()(
   persist(
@@ -84,7 +86,8 @@ export const useAuthStore = create<AuthStore>()(
           const { isAuthenticated, token } = get()
           if (isAuthenticated && token) {
             try {
-              const response = await fetch('/api/auth/me', {
+              const apiBase = (import.meta.env.VITE_API_URL || 'http://localhost:8000/api')
+              const response = await fetch(`${apiBase}/auth/me`, {
                 headers: { 'Authorization': `Bearer ${token}` }
               })
               if (!response.ok && response.status === 401) {
@@ -97,19 +100,14 @@ export const useAuthStore = create<AuthStore>()(
             }
           }
           
-          // Добавляем таймаут для инициализации Keycloak
-          const initPromise = keycloak.init({
-            onLoad: 'check-sso',
+          const authenticated = await keycloak.init({
+            onLoad: 'login-required',
             silentCheckSsoRedirectUri: window.location.origin + '/silent-check-sso.html',
             checkLoginIframe: false,
+            pkceMethod: 'S256',
           })
-          
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Keycloak initialization timeout')), 10000)
-          )
-          
-          const authenticated = await Promise.race([initPromise, timeoutPromise])
 
+          console.log('[Auth] keycloak.init authenticated =', authenticated)
           if (authenticated) {
             const userInfo = await keycloak.loadUserInfo() as KeycloakUserInfo
             const tokenParsed = keycloak.tokenParsed as KeycloakTokenParsed
@@ -125,6 +123,7 @@ export const useAuthStore = create<AuthStore>()(
               roles,
             }
 
+            console.log('[Auth] token acquired', !!keycloak.token)
             set({
               isAuthenticated: true,
               user,
@@ -132,12 +131,15 @@ export const useAuthStore = create<AuthStore>()(
               keycloak,
               isLoading: false,
             })
+            setAuthToken(keycloak.token || null)
 
             // Set up token refresh
             keycloak.onTokenExpired = () => {
               keycloak.updateToken(30).then((refreshed) => {
                 if (refreshed) {
                   set({ token: keycloak.token })
+                  setAuthToken(keycloak.token || null)
+                  console.log('[Auth] token refreshed')
                 } else {
                   const tokenParsed = keycloak.tokenParsed as KeycloakTokenParsed
                   console.warn('Token not refreshed, valid for', (tokenParsed?.exp || 0) - Math.round(new Date().getTime() / 1000), 'seconds')
@@ -157,17 +159,14 @@ export const useAuthStore = create<AuthStore>()(
               keycloak,
               isLoading: false,
             })
+            // Если сессии нет — инициируем интерактивный вход
+            await keycloak.login({
+              redirectUri: window.location.origin + '/dashboard'
+            })
           }
         } catch (error) {
           console.error('Failed to initialize auth:', error)
-          
-          // Если произошла ошибка инициализации, очищаем токены и показываем страницу входа
-          get().clearTokens()
-          
-          // Показываем уведомление пользователю
-          toast.error('Ошибка аутентификации. Пожалуйста, войдите в систему заново.', {
-            duration: 5000,
-          })
+          await keycloak.login({ redirectUri: window.location.origin + '/dashboard' })
         }
       },
 
